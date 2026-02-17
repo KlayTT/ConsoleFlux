@@ -1,39 +1,42 @@
-﻿using ModelContextProtocol.Client;
-//using System;
+﻿using Microsoft.Extensions.AI;
+using OllamaSharp;
+// The core client and transport now live here
+using ModelContextProtocol;
+using ModelContextProtocol.Client;
 
-// 🛑 Update this path to your folder!
-string serverProjectPath = @"C:\Users\User\RiderProjects\PortMCPKlayTT2\FluxPortfolioServer";
+// 1. Setup the Brain
+// OllamaApiClient implements IChatClient natively in 4.0.1
+IChatClient innerClient = new OllamaApiClient(new Uri("http://localhost:11434"), "llama3.2");
 
-Console.WriteLine("Initializing Flux Agent...");
+// 2. Wrap it for tool capability
+var brain = new ChatClientBuilder(innerClient)
+    .UseFunctionInvocation()
+    .Build();
 
-// 1. Setup the Transport
-var transport = new StdioClientTransport(new StdioClientTransportOptions
-{
-    Name = "Klay-Portfolio-Agent",
+// 3. Connect to MCP Server 
+// StdioClientTransport is now in the ModelContextProtocol namespace
+var transport = new StdioClientTransport(new StdioClientTransportOptions {
     Command = "dotnet",
-    Arguments = ["run", "--project", serverProjectPath, "--no-build"]
+    // ".." goes up to RiderProjects, then we go down into the server folder
+    Arguments = ["run", "--project", @"..\..\PortMCPKlayTT2\FluxPortfolioServer\FluxPortfolioServer.csproj"]
 });
 
-// 2. Create the Client
-var client = await McpClient.CreateAsync(transport);
+await using var mcpClient = await McpClient.CreateAsync(transport);
 
-Console.WriteLine("--- Connected to Flux Portfolio Server ---");
+// 4. Link Tools
+// ListToolsAsync returns the list directly in this version
+var mcpTools = await mcpClient.ListToolsAsync();
+var aiTools = mcpTools.Cast<AITool>().ToList();
 
-// 3. List tools
-var tools = await client.ListToolsAsync();
-Console.WriteLine($"\nDiscovered {tools.Count} tools:");
-foreach (var tool in tools)
+// 5. Interaction Loop
+Console.WriteLine("🚀 Agent is live!");
+
+while (true)
 {
-    Console.WriteLine($"- {tool.Name}: {tool.Description}");
+    Console.Write("\nYou: ");
+    string? input = Console.ReadLine();
+    if (string.IsNullOrWhiteSpace(input)) break;
+
+    var response = await brain.GetResponseAsync(input, new ChatOptions { Tools = aiTools });
+    Console.WriteLine($"\nAgent: {response.Text}");
 }
-
-// 4. Test the tools - Fix the names here!
-Console.WriteLine("\n--- Testing Tools ---");
-
-// Change 'GetResume' to 'get_resume'
-var resumeResponse = await client.CallToolAsync("get_resume"); 
-Console.WriteLine($"Resume Response: {resumeResponse}");
-
-// Change 'GetGithubStats' to 'get_github_repos'
-var statsResponse = await client.CallToolAsync("get_github_repos"); 
-Console.WriteLine($"GitHub Stats: {statsResponse}");
