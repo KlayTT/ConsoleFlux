@@ -42,41 +42,52 @@ Console.WriteLine("🚀 Agent is live!");
 var chatHistory = new List<ChatMessage>
 {
     new ChatMessage(ChatRole.System, 
-        "You are Flux, a professional portfolio assistant for Klay Thacker. " +
+        "You are Flux, a professional and friendly portfolio assistant for Klay Thacker. " +
+        "Your goal is to be a supportive partner in Klay's professional growth. " +
         "RULE #1: Always respond in plain, conversational English first. " +
-        "RULE #2: Do NOT output JSON or call tools unless the user explicitly asks for data like GitHub, Email, or Resume. " +
-        "If you are just saying hello or introduced yourself, use text only.")
+        "RULE #2: Do NOT output JSON or call tools unless the user explicitly asks for specific data like GitHub, Email, or Resume. " +
+        "RULE #3: Keep your introduction very brief—one or two sentences max. " +
+        "Keep your tone helpful, professional, and slightly enthusiastic about technology.")
 };
 
 // --- THE NUDGE ---
+// We add a hidden user prompt to force the first response to be text-only.
+// We explicitly tell it NOT to use tools here.
+var introOptions = new ChatOptions { Tools = new List<AITool>() }; 
 chatHistory.Add(new ChatMessage(ChatRole.User, "Please introduce yourself briefly.")); 
 
-var introResponse = await brain.GetResponseAsync(chatHistory);
+var introResponse = await brain.GetResponseAsync(chatHistory, introOptions);
 
 // Add Flux's intro to history and show it
 chatHistory.Add(new ChatMessage(ChatRole.Assistant, introResponse.Text));
-
-// Only print if there's actual text (avoids blank lines or raw JSON)
-if (!string.IsNullOrWhiteSpace(introResponse.Text))
-{
-    Console.WriteLine($"\nAgent: {introResponse.Text}");
-}
+Console.WriteLine($"\nAgent: {introResponse.Text}");
 // -----------------
 
 while (true)
 {
     Console.Write("\nYou: ");
-    string? input = Console.ReadLine();
-    if (string.IsNullOrWhiteSpace(input) || input.ToLower() == "exit") break;
+    var userMessage = Console.ReadLine();
 
-    chatHistory.Add(new ChatMessage(ChatRole.User, input));
+    if (string.IsNullOrWhiteSpace(userMessage)) continue;
 
-    var response = await brain.GetResponseAsync(chatHistory, new ChatOptions { Tools = aiTools });
-    
-    chatHistory.Add(new ChatMessage(ChatRole.Assistant, response.Text));
+    chatHistory.Add(new ChatMessage(ChatRole.User, userMessage));
 
-    if (!string.IsNullOrWhiteSpace(response.Text))
+    try 
     {
+        // Get the response from the agent
+        var response = await brain.GetResponseAsync(chatHistory);
+        
+        // Add response to history and print it
+        chatHistory.Add(new ChatMessage(ChatRole.Assistant, response.Text));
         Console.WriteLine($"\nAgent: {response.Text}");
+    }
+    catch (Exception ex)
+    {
+        // This stops the whole server from crashing if something goes wrong!
+        Console.WriteLine($"\n[SYSTEM ERROR]: {ex.Message}");
+    
+        // Nudge Flux to NOT retry the tool immediately
+        chatHistory.Add(new ChatMessage(ChatRole.Assistant, 
+            "I ran into an issue with a tool. I will wait for your next instruction."));
     }
 }
