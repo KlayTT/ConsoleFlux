@@ -50,6 +50,12 @@ var getReadmeTool = AIFunctionFactory.Create(
     "GetProjectDetails",
     "Use ONLY to fetch the README content for a SPECIFIC project name (e.g., 'PortMCPKlayTT2'). Use this when the user asks 'tell me more' or 'how does it work'." );
 
+var getRecentCommitsTool = AIFunctionFactory.Create(
+    async (string repoName, int count) => await githubService.GetRecentCommits(repoName, count),
+    "GetRecentCommits",
+    "Use this to fetch the most recent commit messages for a project. This helps show recent progress, work ethic, and specific updates made to a repository."
+);
+
 // ==========================================
 // 4. CHAT CONFIGURATION
 // ==========================================
@@ -66,7 +72,8 @@ var chatHistory = new List<ChatMessage>
 
 var chatOptions = new ChatOptions
 {
-    Tools = new List<AITool> { getProjectsTool, getReadmeTool }
+    // You need to add the new tool here so the AI knows it's available!
+    Tools = new List<AITool> { getProjectsTool, getReadmeTool, getRecentCommitsTool }
 };
 
 // ==========================================
@@ -76,7 +83,8 @@ Console.WriteLine("🚀 Flux is live and connected to GitHub!");
 var toolMap = new Dictionary<string, AIFunction>
 {
     { "GetRepositories", getProjectsTool },
-    { "GetProjectDetails", getReadmeTool }
+    { "GetProjectDetails", getReadmeTool },
+    { "GetRecentCommits" , getRecentCommitsTool }
 };
 
 while (true)
@@ -195,6 +203,38 @@ public class GitHubService
         catch (Exception ex)
         {
             return $"I tried to read the README for {repoName} but got an error: {ex.Message}";
+        }
+    }
+    public async Task<string> GetRecentCommits(string repoName, int count = 5)
+    {
+        try 
+        {
+            // 1. Create a request to filter for your commits
+            var request = new CommitRequest 
+            { 
+                Author = "KlayTT" 
+            };
+
+            // 2. Use ApiOptions to limit the result count
+            var options = new ApiOptions
+            {
+                PageCount = 1,
+                PageSize = count
+            };
+
+            // 3. Fetch using the correct field name (_client)
+            var commits = await _client.Repository.Commit.GetAll("KlayTT", repoName, request, options);
+
+            if (!commits.Any()) return $"No recent commits found for {repoName} by KlayTT.";
+
+            var commitLogs = commits.Select(c => 
+                $"[{c.Commit.Author.Date.ToString("yyyy-MM-dd")}] {c.Commit.Message}");
+
+            return $"Recent activity for {repoName}:\n" + string.Join("\n", commitLogs);
+        }
+        catch (Exception ex)
+        {
+            return $"Error fetching commits for {repoName}: {ex.Message}";
         }
     }
 }
