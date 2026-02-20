@@ -1,93 +1,200 @@
-﻿using Microsoft.Extensions.AI;
-using OllamaSharp;
-using ModelContextProtocol.Client;
-/*
-Current Work Flow.
-_________________  
-User asks question.
-LLM decides if a tool is needed.
-LLM outputs JSON (the tool call).
-Your Code executes the tool and sends data back.
-LLM translates data into a human sentence.
-*/
+﻿using Octokit;
+using Microsoft.Extensions.AI; // Required for CompleteAsync
+using OllamaSharp;          
+using System.IO;
 
+// ==========================================
+// 1. SETUP & PROTECTION
+// ==========================================
+string tokenFolder = "GithubServicesandFiles";
+string tokenFile = "git_token.txt";
+string tokenPath = Path.Combine(Directory.GetCurrentDirectory(), tokenFolder, "git_token.txt");
 
-// 1. Setup the Brain
-// OllamaApiClient implements IChatClient natively in 4.0.1
-IChatClient innerClient = new OllamaApiClient(new Uri("http://localhost:11434"), "llama3.2");
+// Diagnostic Print
+Console.WriteLine($"🔍 Looking for token at: {tokenPath}");
+Console.WriteLine($"📂 Current Execution Directory: {Directory.GetCurrentDirectory()}");
 
-// 2. Wrap it for tool capability (keep this simple)
-var brain = new ChatClientBuilder(innerClient)
-    .UseFunctionInvocation()
-    .Build();
+if (!File.Exists(tokenPath))
+{
+    Console.WriteLine($"⚠️ Error: Could not find {tokenPath}");
+    // Let's list what DOES exist here to help us debug
+    if (Directory.Exists(tokenFolder)) {
+        Console.WriteLine($"✅ Folder '{tokenFolder}' found, but file might be missing.");
+    } else {
+        Console.WriteLine($"❌ Folder '{tokenFolder}' not found in current directory.");
+    }
+    return;
+}
 
-// 3. Connect to MCP Server 
-// StdioClientTransport is now in the ModelContextProtocol namespace
-var transport = new StdioClientTransport(new StdioClientTransportOptions {
-    Command = "dotnet",
-    // ".." goes up to RiderProjects, then we go down into the server folder
-    Arguments = ["run", "--project", @"..\..\PortMCPKlayTT2\FluxPortfolioServer\FluxPortfolioServer.csproj"]
-});
+string githubToken = File.ReadAllText(tokenPath).Trim();
 
-await using var mcpClient = await McpClient.CreateAsync(transport);
+// ==========================================
+// 2. THE BRAIN (OLLAMA + LLAMA)
+// ==========================================
+// We use the OllamaApiClient directly as the ChatClient
+IChatClient brain = new OllamaApiClient(new Uri("http://localhost:11434"), "llama3.2");
+var testResponse = await brain.GetResponseAsync("Hello world!");
 
-// 4. Link Tools
-// ListToolsAsync returns the list directly in this version
-var mcpTools = await mcpClient.ListToolsAsync();
-var aiTools = mcpTools.Cast<AITool>().ToList();
+// ==========================================
+// 3. THE TOOLS
+// ==========================================
+var githubService = new GitHubService(githubToken);
 
-// 5. Interaction Loop
-Console.WriteLine("🚀 Agent is live!");
+var getProjectsTool = AIFunctionFactory.Create(
+    async () => await githubService.GetMyProjects(),
+    "GetRepositories",
+    "Use ONLY to get the overall LIST of all repositories. Do NOT use this if the user mentions a specific project name.");
 
+var getReadmeTool = AIFunctionFactory.Create(
+    async (string repoName) => await githubService.GetReadme(repoName),
+    "GetProjectDetails",
+    "Use ONLY to fetch the README content for a SPECIFIC project name (e.g., 'PortMCPKlayTT2'). Use this when the user asks 'tell me more' or 'how does it work'." );
+
+// ==========================================
+// 4. CHAT CONFIGURATION
+// ==========================================
 var chatHistory = new List<ChatMessage>
 {
     new ChatMessage(ChatRole.System, 
-        "You are Flux, a professional and friendly portfolio assistant for Klay Thacker. " +
-        "Your goal is to be a supportive partner in Klay's professional growth. " +
-        "RULE #1: Always respond in plain, conversational English first. " +
-        "RULE #2: Do NOT output JSON or call tools unless the user explicitly asks for specific data like GitHub, Email, or Resume. " +
-        "RULE #3: Keep your introduction very brief—one or two sentences max. " +
-        "Keep your tone helpful, professional, and slightly enthusiastic about technology.")
+        "You are Flux, Klay's portfolio assistant. " +
+        "CRITICAL: Do not use tools for small talk. " +
+        "If Klay says 'Hi' or 'How are you', just be a friendly human. " +
+        "Only use GetRepositories if the conversation is specifically about his code or GitHub." +
+        "When you need to use a tool, do not type the JSON yourself; use the internal function calling mechanism." +
+        "Before choosing a tool, check if the user is asking about a specific project name you already know. If they are, you MUST use 'GetProjectDetails' instead of 'GetRepositories'.")
 };
 
-// --- THE NUDGE ---
-// We add a hidden user prompt to force the first response to be text-only.
-// We explicitly tell it NOT to use tools here.
-var introOptions = new ChatOptions { Tools = new List<AITool>() }; 
-chatHistory.Add(new ChatMessage(ChatRole.User, "Please introduce yourself briefly.")); 
+var chatOptions = new ChatOptions
+{
+    Tools = new List<AITool> { getProjectsTool, getReadmeTool }
+};
 
-var introResponse = await brain.GetResponseAsync(chatHistory, introOptions);
-
-// Add Flux's intro to history and show it
-chatHistory.Add(new ChatMessage(ChatRole.Assistant, introResponse.Text));
-Console.WriteLine($"\nAgent: {introResponse.Text}");
-// -----------------
+// ==========================================
+// 5. THE MAIN LOOP
+// ==========================================
+Console.WriteLine("🚀 Flux is live and connected to GitHub!");
+var toolMap = new Dictionary<string, AIFunction>
+{
+    { "GetRepositories", getProjectsTool },
+    { "GetProjectDetails", getReadmeTool }
+};
 
 while (true)
 {
     Console.Write("\nYou: ");
-    var userMessage = Console.ReadLine();
-
+    string? userMessage = Console.ReadLine();
+    
     if (string.IsNullOrWhiteSpace(userMessage)) continue;
-
+    if (userMessage.ToLower() == "exit") break;
+    
+    // Add user input to history immediately
     chatHistory.Add(new ChatMessage(ChatRole.User, userMessage));
+
+    // 1. THE HACK: Detect simple social talk to prevent over-working
+    string[] lazyKeywords = { "hi", "hey", "hello", "bye", "thanks", "signing off", "cya" };
+    bool isSimpleTalk = lazyKeywords.Any(word => userMessage.ToLower().Contains(word));
 
     try 
     {
-        // Get the response from the agent
-        var response = await brain.GetResponseAsync(chatHistory);
+        bool responseNeedsProcessing = true;
+        while (responseNeedsProcessing)
+        {
+            // 2. APPLY HACK: Override options if it's just a greeting/goodbye
+            var currentOptions = isSimpleTalk ? new ChatOptions { Tools = null } : chatOptions;
         
-        // Add response to history and print it
-        chatHistory.Add(new ChatMessage(ChatRole.Assistant, response.Text));
-        Console.WriteLine($"\nAgent: {response.Text}");
+            var response = await brain.GetResponseAsync(chatHistory, currentOptions);
+            responseNeedsProcessing = false;
+
+            var lastMessage = response.Messages.Last();
+            var toolCalls = lastMessage.Contents.OfType<FunctionCallContent>().ToList();
+            
+            if (toolCalls.Any())
+            {
+                chatHistory.Add(lastMessage); 
+
+                foreach (var call in toolCalls)
+                {
+                    // 1. Look up the tool by name in our map
+                    if (toolMap.TryGetValue(call.Name, out var toolToRun))
+                    {
+                        Console.WriteLine($"🔧 [Flux] Executing: {call.Name}...");
+            
+                        var toolArgs = new AIFunctionArguments(call.Arguments);
+            
+                        // 2. Run whichever tool the AI chose (GetRepositories OR GetProjectDetails)
+                        var result = await toolToRun.InvokeAsync(toolArgs);
+            
+                        var resultContent = new FunctionResultContent(call.CallId, result?.ToString() ?? "No data.");
+                        chatHistory.Add(new ChatMessage(ChatRole.Tool, [resultContent]));
+                    }
+                    else
+                    {
+                        Console.WriteLine($"⚠️ [Flux] tried to use unknown tool: {call.Name}");
+                    }
+                }
+
+                responseNeedsProcessing = true; 
+            }
+            else
+            {
+                string assistantText = response.ToString();
+
+                // 3. SANITY CHECK: Hide raw JSON leakage from the user
+                bool isRawJson = assistantText.Trim().StartsWith("{") && assistantText.Contains("parameters");
+
+                if (!isRawJson && !string.IsNullOrWhiteSpace(assistantText))
+                {
+                    Console.WriteLine($"Flux: {assistantText}");
+                    chatHistory.Add(new ChatMessage(ChatRole.Assistant, assistantText));
+                }
+            }
+        }
     }
     catch (Exception ex)
     {
-        // This stops the whole server from crashing if something goes wrong!
-        Console.WriteLine($"\n[SYSTEM ERROR]: {ex.Message}");
-    
-        // Nudge Flux to NOT retry the tool immediately
-        chatHistory.Add(new ChatMessage(ChatRole.Assistant, 
-            "I ran into an issue with a tool. I will wait for your next instruction."));
+        Console.WriteLine($"❌ Error: {ex.Message}");
+    }
+}
+
+// ==========================================
+// 6. CLASS DEFINITIONS (Bottom of file)
+// ==========================================
+public class GitHubService
+{
+    private readonly GitHubClient _client;
+
+    public GitHubService(string token)
+    {
+        _client = new GitHubClient(new ProductHeaderValue("Flux-Portfolio-Agent"))
+        {
+            Credentials = new Credentials(token)
+        };
+    }
+
+    public async Task<string> GetMyProjects()
+    {
+        try 
+        {
+            var repos = await _client.Repository.GetAllForCurrent();
+            var repoInfo = repos.Select(r => $"{r.Name}: {r.Description ?? "No description"}");
+            return "Klay's GitHub Repos:\n" + string.Join("\n", repoInfo);
+        }
+        catch (Exception ex)
+        {
+            return $"GitHub Error: {ex.Message}";
+        }
+    }
+    public async Task<string> GetReadme(string repoName)
+    {
+        try 
+        {
+            // Explicitly using the KlayTT account from your link
+            var readme = await _client.Repository.Content.GetReadme("KlayTT", repoName);
+            return $"[CONTENT OF README.MD for {repoName}]:\n{readme.Content}";
+        }
+        catch (Exception ex)
+        {
+            return $"I tried to read the README for {repoName} but got an error: {ex.Message}";
+        }
     }
 }
