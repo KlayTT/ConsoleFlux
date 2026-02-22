@@ -62,12 +62,12 @@ var getRecentCommitsTool = AIFunctionFactory.Create(
 var chatHistory = new List<ChatMessage>
 {
     new ChatMessage(ChatRole.System, 
-        "You are Flux, Klay's portfolio assistant. " +
-        "CRITICAL: Do not use tools for small talk. " +
-        "If Klay says 'Hi' or 'How are you', just be a friendly human. " +
-        "Only use GetRepositories if the conversation is specifically about his code or GitHub." +
-        "When you need to use a tool, do not type the JSON yourself; use the internal function calling mechanism." +
-        "Before choosing a tool, check if the user is asking about a specific project name you already know. If they are, you MUST use 'GetProjectDetails' instead of 'GetRepositories'.")
+        "You are Flux, Klay's portfolio assistant. Your primary job is to show off Klay's work. " +
+        "GUIDELINES: " +
+        "1. For general greetings, just be friendly. " +
+        "2. If Klay asks for 'activity', 'updates', 'what I've been doing', or 'recent work', you MUST use 'GetRecentCommits'. " +
+        "3. Use 'GetProjectDetails' ONLY when specifically asked about how a project works or for its README content. " +
+        "4. If Klay mentions a project name with a space (like 'Console Flux'), interpret it as the single string 'ConsoleFlux'.")
 };
 
 var chatOptions = new ChatOptions
@@ -183,9 +183,17 @@ public class GitHubService
     {
         try 
         {
+            // Use the simpler approach: Get all for current user, then filter the list in memory
             var repos = await _client.Repository.GetAllForCurrent();
-            var repoInfo = repos.Select(r => $"{r.Name}: {r.Description ?? "No description"}");
-            return "Klay's GitHub Repos:\n" + string.Join("\n", repoInfo);
+        
+            // Filter: Only show repos where Klay is the owner AND they are public
+            var filteredRepos = repos
+                .Where(r => r.Owner.Login.Equals("KlayTT", StringComparison.OrdinalIgnoreCase) && !r.Private)
+                .Select(r => $"{r.Name}: {r.Description ?? "No description"}");
+
+            if (!filteredRepos.Any()) return "No public repositories found for KlayTT.";
+
+            return "Klay's GitHub Repos:\n" + string.Join("\n", filteredRepos);
         }
         catch (Exception ex)
         {
