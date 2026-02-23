@@ -204,13 +204,28 @@ public class GitHubService
     {
         try 
         {
-            // Explicitly using the KlayTT account from your link
+            // We use "ConsoleFlux" here since that's the actual repo name
             var readme = await _client.Repository.Content.GetReadme("KlayTT", repoName);
-            return $"[CONTENT OF README.MD for {repoName}]:\n{readme.Content}";
+        
+            // Octokit's .Content is already decoded, but we need to label it 
+            // strictly so the LLM knows this is the ACTUAL data it requested.
+            string content = readme.Content;
+
+            Console.WriteLine($"[SYSTEM] Successfully retrieved {repoName} README. Length: {content.Length} characters.");
+
+            return $@"
+                    [DATABASE_RESULT_START]
+                    REPOSITORY: {repoName}
+                    FILE: README.md
+                    CONTENT: {content}
+                    [DATABASE_RESULT_END]
+                    INSTRUCTION: Use the content above to answer the user's request. If the content is empty or irrelevant, 
+                    state that you cannot find the roadmap details.";
         }
         catch (Exception ex)
         {
-            return $"I tried to read the README for {repoName} but got an error: {ex.Message}";
+            Console.WriteLine($"[ERROR] Failed to fetch README for {repoName}: {ex.Message}");
+            return $"ERROR: Could not retrieve the README for {repoName}. Please ensure the repository name is correct.";
         }
     }
     public async Task<string> GetRecentCommits(string repoName, int count = 5)
