@@ -1,7 +1,8 @@
 ﻿using Microsoft.Extensions.AI; 
 using OllamaSharp;          
-using PortfolioAgentFlux.GithubServicesandFiles; // Assuming this is your namespace for the new file
-using PortfolioAgentFlux.NonGitServices; //whoops I didn't add this the first time around
+using PortfolioAgentFlux.GithubServicesandFiles; 
+using PortfolioAgentFlux.NonGitServices; 
+using System.Linq;
 
 // ==========================================
 // 1. SETUP & PROTECTION
@@ -9,140 +10,105 @@ using PortfolioAgentFlux.NonGitServices; //whoops I didn't add this the first ti
 string tokenFolder = "GithubServicesandFiles";
 string tokenPath = Path.Combine(Directory.GetCurrentDirectory(), tokenFolder, "git_token.txt");
 
-Console.WriteLine($"🔍 Looking for token at: {tokenPath}");
-
 if (!File.Exists(tokenPath))
 {
     Console.WriteLine($"⚠️ Error: Could not find {tokenPath}");
     return;
 }
-
 string githubToken = File.ReadAllText(tokenPath).Trim();
 
 // ==========================================
-// 2. THE BRAIN & SERVICES
+// 2. THE BRAIN (Now with Automatic Tool Invocation)
 // ==========================================
-IChatClient brain = new OllamaApiClient(new Uri("http://localhost:11434"), "llama3.2");
+// The base client talks to Ollama
+IChatClient innerClient = new OllamaApiClient(new Uri("http://localhost:11434"), "llama3.2");
+
+// The builder wraps it so tools are executed AUTOMATICALLY
+IChatClient brain = innerClient.AsBuilder()
+    .UseFunctionInvocation() 
+    .Build();
 
 var githubService = new GitHubService(githubToken);
-var securityService = new SecurityService(); // <--- 1. INITIALIZED SECURITY SERVICE
+var securityService = new SecurityService(); 
 var testingService = new TestingService();
 
 // ==========================================
-// 3. THE TOOLS
+// 3. THE TOOLS (Definitions stay the same)
 // ==========================================
-var getProjectsTool = AIFunctionFactory.Create(
-    async () => await githubService.GetMyProjects(),
-    "GetRepositories",
-    "Use ONLY to get the overall LIST of all repositories.");
-
-var getReadmeTool = AIFunctionFactory.Create(
-    async (string repoName) => await githubService.GetReadme(repoName),
-    "GetProjectDetails",
-    "Use ONLY to fetch the README content for a SPECIFIC project name.");
-
-var getRecentCommitsTool = AIFunctionFactory.Create(
-    async (string repoName, int count) => await githubService.GetRecentCommits(repoName, count),
-    "GetRecentCommits",
-    "Use this to fetch the most recent commit messages for a project.");
-
-// 2. CREATED THE SECURITY TOOL
-var scanForSecretsTool = AIFunctionFactory.Create(
-    (string fileName, string content) => securityService.ScanContent(fileName, content),
-    "ScanForSecrets",
-    "Scans code or text for potential security risks like API keys or passwords. Use this if a user asks to 'check' or 'audit' a file.");
-
-var getTestSuggestionsTool = AIFunctionFactory.Create(
-    (string codeSnippet) => testingService.AnalyzeCodeForTests(codeSnippet),
-    "ReviewCodeForTests",
-    "Use this to analyze a code snippet and get suggestions for unit tests. Use this when the user asks to 'review', 'check', or 'suggest tests' for code.");
+var getProjectsTool = AIFunctionFactory.Create(async () => await githubService.GetMyProjects(), "GetRepositories", "Lists all repositories.");
+var getReadmeTool = AIFunctionFactory.Create(async (string repoName) => await githubService.GetReadme(repoName), "GetProjectDetails", "Fetches README content.");
+var getRecentCommitsTool = AIFunctionFactory.Create(async (string repoName, int count) => await githubService.GetRecentCommits(repoName, count), "GetRecentCommits", "Fetches recent commits.");
+var scanForSecretsTool = AIFunctionFactory.Create((string fileName, string content) => securityService.ScanContent(fileName, content), "ScanForSecrets", "Audits code for secrets.");
+var getTestSuggestionsTool = AIFunctionFactory.Create((string codeSnippet) => testingService.AnalyzeCodeForTests(codeSnippet), "ReviewCodeForTests", "Suggests unit tests.");
+var readProjectFileTool = AIFunctionFactory.Create((string fileName) => {
+    try {
+        string projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+        string filePath = Path.Combine(projectRoot, fileName);
+        return File.Exists(filePath) ? File.ReadAllText(filePath) : $"❌ Error: File '{fileName}' not found.";
+    } catch (Exception ex) { return $"❌ Error: {ex.Message}"; }
+}, "ReadProjectFile", "Reads a local file's source code.");
 
 // ==========================================
 // 4. CHAT CONFIGURATION
 // ==========================================
+var chatOptions = new ChatOptions
+{
+    Tools = new List<AITool> { getProjectsTool, getReadmeTool, getRecentCommitsTool, scanForSecretsTool, getTestSuggestionsTool, readProjectFileTool }
+};
+
 var chatHistory = new List<ChatMessage>
 {
     new ChatMessage(ChatRole.System, 
-        "You are Flux, Klay's portfolio assistant. Your primary job is to show off Klay's work. " +
-        "If asked to 'audit', 'check security', or 'scan' a project, use the ScanForSecrets tool on the README or code provided.")
+        "You are Flux, Klay's witty Portfolio Agent. " +
+        "CRITICAL RULES: " +
+        "1. Do NOT use tools or search for repositories unless Klay explicitly asks you to. " +
+        "2. If Klay just says 'Hello' or 'Hey', just respond with a greeting. " +
+        "3. Be concise and conversational. " +
+        "4. Only provide repository lists or file contents when directly requested.")
 };
 
-var chatOptions = new ChatOptions
-{
-    // 3. ADDED TOOL TO THE OPTIONS LIST
-    Tools = new List<AITool> { getProjectsTool, getReadmeTool, getRecentCommitsTool, scanForSecretsTool }
-};
-
-// ==========================================
-// 5. THE MAIN LOOP
-// ==========================================
 Console.WriteLine("🚀 Flux is live and connected to GitHub!");
 
-// 4. ADDED TO THE TOOL MAP
-var toolMap = new Dictionary<string, AIFunction>
-{
-    { "GetRepositories", getProjectsTool },
-    { "GetProjectDetails", getReadmeTool },
-    { "GetRecentCommits" , getRecentCommitsTool },
-    { "ScanForSecrets", scanForSecretsTool }
-};
-
+// ==========================================
+// 5. THE MAIN LOOP (Clean & Simple)
+// ==========================================
 while (true)
 {
     Console.Write("\nYou: ");
-    string? userMessage = Console.ReadLine();
-    if (string.IsNullOrWhiteSpace(userMessage)) continue;
-    if (userMessage.ToLower() == "exit") break;
-    int loopSafetyCounter = 0; // Prevent infinite AI loops
-    
-    chatHistory.Add(new ChatMessage(ChatRole.User, userMessage));
+    string? userInput = Console.ReadLine();
+    if (string.IsNullOrWhiteSpace(userInput)) continue;
 
-    string[] lazyKeywords = { "hi", "hey", "hello", "bye", "thanks", "signing off", "cya" };
-    bool isSimpleTalk = lazyKeywords.Any(word => userMessage.ToLower().Contains(word));
+    chatHistory.Add(new ChatMessage(ChatRole.User, userInput));
+
+    Console.Write("Flux: ");
 
     try 
     {
-        bool responseNeedsProcessing = true;
-        while (responseNeedsProcessing && loopSafetyCounter < 3)
-        {
-            loopSafetyCounter++;
-            var currentOptions = isSimpleTalk ? new ChatOptions { Tools = null } : chatOptions;
-            var response = await brain.GetResponseAsync(chatHistory, currentOptions);
-            // If it was just simple talk, don't let him even think about tool calls
-            if (isSimpleTalk) responseNeedsProcessing = false;
-            var lastMessage = response.Messages.Last();
-            var toolCalls = lastMessage.Contents.OfType<FunctionCallContent>().ToList();
-            
-            if (toolCalls.Any())
-            {
-                chatHistory.Add(lastMessage); 
+        // Get the response (The Invoker handles the tools automatically)
+        var response = await brain.GetResponseAsync(chatHistory, chatOptions);
 
-                foreach (var call in toolCalls)
-                {
-                    if (toolMap.TryGetValue(call.Name, out var toolToRun))
-                    {
-                        Console.WriteLine($"🔧 [Flux] Executing: {call.Name}...");
-                        var toolArgs = new AIFunctionArguments(call.Arguments);
-                        var result = await toolToRun.InvokeAsync(toolArgs);
-                        var resultContent = new FunctionResultContent(call.CallId, result?.ToString() ?? "No data.");
-                        chatHistory.Add(new ChatMessage(ChatRole.Tool, [resultContent]));
-                    }
-                }
-                responseNeedsProcessing = true; 
-            }
-            else
-            {
-                string assistantText = response.ToString();
-                if (!string.IsNullOrWhiteSpace(assistantText))
-                {
-                    Console.WriteLine($"Flux: {assistantText}");
-                    chatHistory.Add(new ChatMessage(ChatRole.Assistant, assistantText));
-                }
-            }
+        // Bypass properties: Extract the text via ToString()
+        string responseText = response.ToString();
+
+        // If the response text is empty or just brackets, peek at the history 
+        // because the FunctionInvocation builder often injects the final answer there.
+        if (string.IsNullOrWhiteSpace(responseText) || responseText == "{}")
+        {
+            responseText = chatHistory.LastOrDefault(m => m.Role == ChatRole.Assistant)?.Text 
+                           ?? "Flux is processing...";
+        }
+
+        Console.WriteLine(responseText);
+
+        // Ensure the Assistant's reply is in the history for the next turn
+        // We only add it if the invoker didn't already put it there.
+        if (chatHistory.LastOrDefault()?.Role != ChatRole.Assistant)
+        {
+            chatHistory.Add(new ChatMessage(ChatRole.Assistant, responseText));
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error: {ex.Message}");
+        Console.WriteLine($"\n❌ Flux Error: {ex.Message}");
     }
 }
