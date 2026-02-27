@@ -1,36 +1,55 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
 namespace PortfolioAgentFlux.NonGitServices;
 
 public class TestingService
 {
     public string AnalyzeCodeForTests(string codeSnippet)
     {
-        // A simple list to collect suggestions
+        // 1. Parse the text into a "Syntax Tree"
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(codeSnippet);
+        CompilationUnitSyntax root = tree.GetCompilationUnitRoot();
+
         var suggestions = new List<string>();
 
-        // 1. Check for Null Checks
-        if (codeSnippet.Contains("class") || codeSnippet.Contains("void") || codeSnippet.Contains("Task"))
+        // 2. Find all Method Declarations
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+
+        foreach (var method in methods)
         {
-            if (!codeSnippet.Contains("== null") && !codeSnippet.Contains("is null"))
+            string methodName = method.Identifier.Text;
+            
+            // Look at the parameters of the method
+            foreach (var param in method.ParameterList.Parameters)
             {
-                suggestions.Add("⚠️ Missing Null Checks: Ensure you test how this code handles null inputs.");
+                var assignments = method.DescendantNodes().OfType<AssignmentExpressionSyntax>();
+                foreach (var assignment in assignments)
+                {
+                    var value = assignment.Right.ToString();
+                    if (value.Contains("ghp_") || value.Contains("AIza")) // Common prefixes for GitHub/Google keys
+                    {
+                        suggestions.Add($"❌ Method '{methodName}': Potential hardcoded API key detected in assignment!");
+                    }
+                }
+                // If the parameter is a string, suggest a null/empty check
+                if (param.Type?.ToString() == "string")
+                {
+                    suggestions.Add($"⚠️ Method '{methodName}': Parameter '{param.Identifier.Text}' is a string. Suggest testing for null and String.Empty.");
+                }
+            }
+
+            // Check if the method body contains a loop
+            if (method.Body?.DescendantNodes().Any(n => n is ForStatementSyntax || n is ForEachStatementSyntax) == true)
+            {
+                suggestions.Add($"⚠️ Method '{methodName}': Contains a loop. Suggest testing with empty collections.");
             }
         }
 
-        // 2. Check for Loops (Edge Cases)
-        if (codeSnippet.Contains("for") || codeSnippet.Contains("foreach") || codeSnippet.Contains(".Select"))
-        {
-            suggestions.Add("⚠️ Collection Edge Cases: Test with an empty list and a list with only one item.");
-        }
+        if (!suggestions.Any())
+            return "Flux checked the structure via Roslyn. No obvious patterns found, but it looks clean!";
 
-        // 3. Check for Strings
-        if (codeSnippet.Contains("string"))
-        {
-            suggestions.Add("⚠️ String Inputs: Test with String.Empty and very long strings.");
-        }
-
-        if (suggestions.Count == 0)
-            return "Flux reviewed the code and it looks solid, but manual unit tests are always recommended!";
-
-        return "### 🧪 Unit Test Recommendations:\n" + string.Join("\n", suggestions);
+        return "### 🤖 Roslyn Deep Analysis:\n" + string.Join("\n", suggestions);
     }
 }
