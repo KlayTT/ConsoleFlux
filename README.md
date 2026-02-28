@@ -1,5 +1,4 @@
 ﻿## PortfolioAgentFlux
-_________
 An intelligent C# Console application acting as a personal portfolio assistant. This agent uses local LLMs to interact with the GitHub API, providing a conversational interface for exploring developer activity and project details.
 
 ## UseCases
