@@ -22,5 +22,5 @@ An intelligent C# Console application acting as a personal portfolio assistant. 
 - [ ] Implement advanced filtering for repository analytics.
 
 _________
-## 🤖 Managed & Documented by Gemini**
+## 🤖 Managed & Documented by Gemini
 This README and the underlying agent logic are co-developed by Klay and Gemini to push the boundaries of local AI orchestration.
