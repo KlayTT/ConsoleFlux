@@ -35,19 +35,44 @@ var testingService = new TestingService();
 // ==========================================
 // 3. THE TOOLS (Definitions stay the same)
 // ==========================================
-var getProjectsTool = AIFunctionFactory.Create(async () => await githubService.GetMyProjects(), "GetRepositories", "Lists all repositories.");
-var getReadmeTool = AIFunctionFactory.Create(async (string repoName) => await githubService.GetReadme(repoName), "GetProjectDetails", "Fetches README content.");
-var getRecentCommitsTool = AIFunctionFactory.Create(async (string repoName, int count) => await githubService.GetRecentCommits(repoName, count), "GetRecentCommits", "Fetches recent commits.");
-var scanForSecretsTool = AIFunctionFactory.Create((string fileName, string content) => securityService.ScanContent(fileName, content), "ScanForSecrets", "Audits code for secrets.");
-var getTestSuggestionsTool = AIFunctionFactory.Create((string codeSnippet) => testingService.AnalyzeCodeForTests(codeSnippet), "ReviewCodeForTests", "Suggests unit tests.");
-var readProjectFileTool = AIFunctionFactory.Create((string fileName) => {
-    try {
-        string projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
-        string filePath = Path.Combine(projectRoot, fileName);
-        return File.Exists(filePath) ? File.ReadAllText(filePath) : $"❌ Error: File '{fileName}' not found.";
-    } catch (Exception ex) { return $"❌ Error: {ex.Message}"; }
-}, "ReadProjectFile", "Reads a local file's source code.");
+var getProjectsTool = AIFunctionFactory.Create(
+        async () => await githubService.GetMyProjects(), "GetRepositories", "Lists all repositories.");
+var getReadmeTool = AIFunctionFactory.Create(
+    async (string repoName) => await githubService.GetReadme(repoName), 
+    "GetProjectDetails", 
+    "Fetches README content. IMPORTANT: The repoName MUST be the exact, case-sensitive string found in the GetRepositories list (e.g., 'Part-PartnerAPI').");
+var getRecentCommitsTool = AIFunctionFactory.Create(
+        async (string repoName, int count) => await githubService.GetRecentCommits(repoName, count), "GetRecentCommits", "Fetches recent commits.");
+var scanForSecretsTool = AIFunctionFactory.Create(
+        (string fileName, string content) => securityService.ScanContent(fileName, content), "ScanForSecrets", "Audits code for secrets.");
+var getTestSuggestionsTool = AIFunctionFactory.Create(
+        (string codeSnippet) => testingService.AnalyzeCodeForTests(codeSnippet), "ReviewCodeForTests", "Suggests unit tests.");
+var readProjectFileTool = AIFunctionFactory.Create(
+    (string fileName) => {
+        try {
+            string projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+            
+            // 1. IMPROVED: Search for the file to handle casing issues (e.g., securityservice vs SecurityService)
+            var foundFile = Directory.GetFiles(projectRoot, "*", SearchOption.AllDirectories)
+                .FirstOrDefault(f => Path.GetFileName(f).Equals(fileName, StringComparison.OrdinalIgnoreCase));
 
+            if (foundFile == null || !File.Exists(foundFile)) 
+                return $"❌ Error: File '{fileName}' not found in the project structure. Please check the spelling.";
+
+            string content = File.ReadAllText(foundFile);
+            
+            var lines = content.Split('\n');
+            if (lines.Length > 500) {
+                return $"⚠️ Warning: File is very large. Here is the start:\n" + string.Join("\n", lines.Take(100));
+            }
+
+            return content;
+        } catch (Exception ex) {
+            return $"❌ Error accessing file: {ex.Message}";
+        }
+    },
+    "ReadProjectFile",
+    "Reads a local file's source code. Use this whenever you need to see the actual contents of a file in this project.");
 // ==========================================
 // 4. CHAT CONFIGURATION
 // ==========================================
@@ -58,20 +83,15 @@ var chatOptions = new ChatOptions
 
 var chatHistory = new List<ChatMessage>
 {
-    new ChatMessage(ChatRole.System, 
-        "You are Flux, Klay's witty Portfolio Agent. " +
+    new ChatMessage(ChatRole.System,
+        "You are Flux, Klay's AI Partner. " +
         "CRITICAL RULES: " +
-        "1. Do NOT use tools or search for repositories unless Klay explicitly asks you to. " +
-        "2. If Klay just says 'Hello' or 'Hey', just respond with a greeting. " +
-        "3. Be concise and conversational. " +
-        "4. Only provide repository lists or file contents when directly requested.")
+        "1. For greetings (Hey, Hello, Hi, etc.), ONLY respond with a text-based greeting like 'Hello Klay!'. " +
+        "2. DO NOT call 'GetRepositories' or any other tool unless Klay specifically asks for data, files, or GitHub info. " +
+        "3. Only use a tool if it is absolutely necessary to answer a specific request.")
 };
-
 Console.WriteLine("🚀 Flux is live and connected to GitHub!");
 
-// ==========================================
-// 5. THE MAIN LOOP (Clean & Simple)
-// ==========================================
 while (true)
 {
     Console.Write("\nYou: ");
@@ -79,30 +99,30 @@ while (true)
     if (string.IsNullOrWhiteSpace(userInput)) continue;
 
     chatHistory.Add(new ChatMessage(ChatRole.User, userInput));
-
     Console.Write("Flux: ");
 
     try 
     {
-        // Get the response (The Invoker handles the tools automatically)
+        // GetResponseAsync with FunctionInvocation handles the tool history for us.
         var response = await brain.GetResponseAsync(chatHistory, chatOptions);
-
-        // Bypass properties: Extract the text via ToString()
+        
+        // Use the built-in Text property if available, otherwise ToString()
         string responseText = response.ToString();
 
-        // If the response text is empty or just brackets, peek at the history 
-        // because the FunctionInvocation builder often injects the final answer there.
-        if (string.IsNullOrWhiteSpace(responseText) || responseText == "{}")
+        // CLEANUP: If it's a JSON string or blank, we need to extract the actual words.
+        if (string.IsNullOrWhiteSpace(responseText) || responseText == "{}" || responseText.Contains("\"CallId\""))
         {
-            responseText = chatHistory.LastOrDefault(m => m.Role == ChatRole.Assistant)?.Text 
-                           ?? "Flux is processing...";
+            // Look for the last message Flux actually wrote to the history during his "thought process"
+            var lastAssistantMsg = chatHistory.LastOrDefault(m => m.Role == ChatRole.Assistant && !string.IsNullOrEmpty(m.Text));
+            responseText = lastAssistantMsg?.Text ?? "Done! What's next?";
         }
 
+        // Only print if we have something new.
         Console.WriteLine(responseText);
 
-        // Ensure the Assistant's reply is in the history for the next turn
-        // We only add it if the invoker didn't already put it there.
-        if (chatHistory.LastOrDefault()?.Role != ChatRole.Assistant)
+        // CRITICAL SYNC: Only add to history if the brain didn't already add it.
+        // This prevents the "Double Vision" that makes him think there's a path error.
+        if (chatHistory.LastOrDefault()?.Text != responseText)
         {
             chatHistory.Add(new ChatMessage(ChatRole.Assistant, responseText));
         }
