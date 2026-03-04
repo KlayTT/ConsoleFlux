@@ -1,93 +1,30 @@
 ﻿using Microsoft.Extensions.AI; 
 using OllamaSharp;          
-using PortfolioAgentFlux.GithubServicesandFiles; 
-using PortfolioAgentFlux.NonGitServices; 
-using System.Linq;
+using PortfolioAgentFlux.Services; // Ensure this matches your namespace
 
-// ==========================================
-// 1. SETUP & PROTECTION
-// ==========================================
-string tokenFolder = "GithubServicesandFiles";
-string tokenPath = Path.Combine(Directory.GetCurrentDirectory(), tokenFolder, "git_token.txt");
-
-if (!File.Exists(tokenPath))
-{
-    Console.WriteLine($"⚠️ Error: Could not find {tokenPath}");
-    return;
-}
+// 1. SETUP (Token logic stays here as it's an entry-point requirement)
+string tokenPath = Path.Combine(Directory.GetCurrentDirectory(), "GithubServicesandFiles", "git_token.txt");
+if (!File.Exists(tokenPath)) return;
 string githubToken = File.ReadAllText(tokenPath).Trim();
 
-// ==========================================
-// 2. THE BRAIN (Now with Automatic Tool Invocation)
-// ==========================================
-// The base client talks to Ollama
+// 2. THE BRAIN
 IChatClient innerClient = new OllamaApiClient(new Uri("http://localhost:11434"), "llama3.2");
+IChatClient brain = innerClient.AsBuilder().UseFunctionInvocation().Build();
 
-// The builder wraps it so tools are executed AUTOMATICALLY
-IChatClient brain = innerClient.AsBuilder()
-    .UseFunctionInvocation() 
-    .Build();
+// 3. THE TOOLS (REFACTORED)
+// We just initialize the Toolkit and pull the list.
+var toolKit = new FluxToolKit(githubToken);
+var chatOptions = new ChatOptions { Tools = toolKit.GetTools() };
 
-var githubService = new GitHubService(githubToken);
-var securityService = new SecurityService(); 
-var testingService = new TestingService();
-
-// ==========================================
-// 3. THE TOOLS (Definitions stay the same)
-// ==========================================
-var getProjectsTool = AIFunctionFactory.Create(
-        async () => await githubService.GetMyProjects(), "GetRepositories", "Lists all repositories.");
-var getReadmeTool = AIFunctionFactory.Create(
-    async (string repoName) => await githubService.GetReadme(repoName), 
-    "GetProjectDetails", 
-    "Fetches README content. IMPORTANT: The repoName MUST be the exact, case-sensitive string found in the GetRepositories list (e.g., 'Part-PartnerAPI').");
-var getRecentCommitsTool = AIFunctionFactory.Create(
-        async (string repoName, int count) => await githubService.GetRecentCommits(repoName, count), "GetRecentCommits", "Fetches recent commits.");
-var scanForSecretsTool = AIFunctionFactory.Create(
-        (string fileName, string content) => securityService.ScanContent(fileName, content), "ScanForSecrets", "Audits code for secrets.");
-var getTestSuggestionsTool = AIFunctionFactory.Create(
-        (string codeSnippet) => testingService.AnalyzeCodeForTests(codeSnippet), "ReviewCodeForTests", "Suggests unit tests.");
-var readProjectFileTool = AIFunctionFactory.Create(
-    (string fileName) => {
-        try {
-            string projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
-            
-            // 1. IMPROVED: Search for the file to handle casing issues (e.g., securityservice vs SecurityService)
-            var foundFile = Directory.GetFiles(projectRoot, "*", SearchOption.AllDirectories)
-                .FirstOrDefault(f => Path.GetFileName(f).Equals(fileName, StringComparison.OrdinalIgnoreCase));
-
-            if (foundFile == null || !File.Exists(foundFile)) 
-                return $"❌ Error: File '{fileName}' not found in the project structure. Please check the spelling.";
-
-            string content = File.ReadAllText(foundFile);
-            
-            var lines = content.Split('\n');
-            if (lines.Length > 500) {
-                return $"⚠️ Warning: File is very large. Here is the start:\n" + string.Join("\n", lines.Take(100));
-            }
-
-            return content;
-        } catch (Exception ex) {
-            return $"❌ Error accessing file: {ex.Message}";
-        }
-    },
-    "ReadProjectFile",
-    "Reads a local file's source code. Use this whenever you need to see the actual contents of a file in this project.");
-// ==========================================
 // 4. CHAT CONFIGURATION
-// ==========================================
-var chatOptions = new ChatOptions
-{
-    Tools = new List<AITool> { getProjectsTool, getReadmeTool, getRecentCommitsTool, scanForSecretsTool, getTestSuggestionsTool, readProjectFileTool }
-};
-
 var chatHistory = new List<ChatMessage>
 {
     new ChatMessage(ChatRole.System,
         "You are Flux, Klay's AI Partner. " +
         "1. If Klay is just saying hello or chatting, respond naturally without calling tools. " +
         "2. ONLY call 'GetRepositories' if he asks to find or list projects. " +
-        "3. Once a search keyword is given (e.g., 'Pickle'), call 'GetRepositories', find the EXACT case-sensitive match (e.g., 'PickleProject'), and then use 'GetProjectDetails'. " +
+        "3. Once a search keyword is given (e.g., 'Pickle'), call 'GetRepositories', " +
+        "find the EXACT case-sensitive match (e.g., 'PickleProject'), and then use 'GetProjectDetails'. " +
         "4. Always present retrieved README content directly to Klay.")
 };
 
