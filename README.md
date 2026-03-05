@@ -1,6 +1,6 @@
 ﻿## PortfolioAgentFlux
-An intelligent C# Console application acting as a personal portfolio assistant. This agent uses local LLMs to interact with the GitHub API, providing a conversational interface for exploring developer activity and project details.
-
+- An intelligent C# Console application acting as a personal portfolio assistant. This agent uses local LLMs to interact with the GitHub API, providing a conversational interface for exploring developer activity and project details.
+_____
 ## UseCases
 - Automated Portfolio Narrative: Summarizes commit history into human-readable progress updates.
 - Interactive Resume: Answers questions about specific projects by reading repository READMEs.
@@ -15,12 +15,13 @@ An intelligent C# Console application acting as a personal portfolio assistant. 
 - API Integration: Octokit (GitHub Client)
 
 ## RoadMap
-- [x] Integrate local Llama 3.2 model.
-- [x] Implement GitHub tool calling (Repositories, READMEs, Commits).
-- [x] Integrate Roslyn for deep code analysis and security scanning.
-- [ ] Refactor into clean architecture (Service/Controller layers).
-- [ ] Implement advanced filtering for repository analytics.
-
-_________
-## 🤖 Managed & Documented by Gemini
+[x] Integrate local Llama 3.2 model.
+[x] Implement GitHub tool calling (Repositories, READMEs, Commits).
+[x] Integrate Roslyn for deep code analysis and security scanning.
+[x] Refactor into Clean Architecture (Migration to FluxToolKit and Service layers).
+[ ] Safety Audit: Move sensitive credentials (Tokens) to Environment Variables.
+[ ] Advanced Filtering: Implement language-specific and metadata-based repository analytics.
+[ ] Visual Identity: Develop Wireframes and Figma designs for the web-based portfolio frontend.
+______
+🤖 Managed & Documented by Gemini
 This README and the underlying agent logic are co-developed by Klay and Gemini to push the boundaries of local AI orchestration.
