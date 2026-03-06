@@ -2,10 +2,18 @@
 using OllamaSharp;          
 using PortfolioAgentFlux.Services; // Ensure this matches your namespace
 
-// 1. SETUP (Token logic stays here as it's an entry-point requirement)
-string tokenPath = Path.Combine(Directory.GetCurrentDirectory(), "GithubServicesandFiles", "git_token.txt");
-if (!File.Exists(tokenPath)) return;
-string githubToken = File.ReadAllText(tokenPath).Trim();
+// ==========================================
+// 1. SETUP & PROTECTION 
+// ==========================================
+// No longer need txt file
+string? githubToken = Environment.GetEnvironmentVariable("FLUX_GIT_TOKEN");
+
+if (string.IsNullOrEmpty(githubToken))
+{
+    Console.WriteLine("⚠️ Error: 'FLUX_GIT_TOKEN' environment variable not found.");
+    Console.WriteLine("Please set it in Windows Environment Variables and restart your IDE.");
+    return;
+}
 
 // 2. THE BRAIN
 IChatClient innerClient = new OllamaApiClient(new Uri("http://localhost:11434"), "llama3.2");
@@ -28,7 +36,7 @@ var chatHistory = new List<ChatMessage>
         "4. Always present retrieved README content directly to Klay.")
 };
 
-Console.WriteLine("🚀 Flux is live and connected to GitHub!");
+Console.WriteLine("Flux: [Connected]");
 
 while (true)
 {
