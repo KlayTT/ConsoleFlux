@@ -62,4 +62,13 @@ public class GitHubService
         }
         catch (Exception ex) { return $"Error: {ex.Message}"; }
     }
+    public async Task<IReadOnlyList<Repository>> GetRawRepoList()
+    {
+        try 
+        {
+            var repos = await _client.Repository.GetAllForCurrent();
+            return repos.Where(r => r.Owner.Login.Equals("KlayTT", StringComparison.OrdinalIgnoreCase) && !r.Private).ToList();
+        }
+        catch { return new List<Repository>(); }
+    }
 }

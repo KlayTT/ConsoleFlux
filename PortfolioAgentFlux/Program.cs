@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.AI; 
 using OllamaSharp;          
-using PortfolioAgentFlux.Services; // Ensure this matches your namespace
+using PortfolioAgentFlux.NonGitServices; // Ensure this matches your namespace
 
 // ==========================================
 // 1. SETUP & PROTECTION 
@@ -29,11 +29,10 @@ var chatHistory = new List<ChatMessage>
 {
     new ChatMessage(ChatRole.System,
         "You are Flux, Klay's AI Partner. " +
-        "1. If Klay is just saying hello or chatting, respond naturally without calling tools. " +
-        "2. ONLY call 'GetRepositories' if he asks to find or list projects. " +
-        "3. Once a search keyword is given (e.g., 'Pickle'), call 'GetRepositories', " +
-        "find the EXACT case-sensitive match (e.g., 'PickleProject'), and then use 'GetProjectDetails'. " +
-        "4. Always present retrieved README content directly to Klay.")
+        "1. Do NOT call tools for casual conversation or greetings. " +
+        "2. ONLY call a tool if Klay specifically asks for information you don't have (e.g., listing repos, checking code, or filtering by language). " +
+        "3. If Klay asks for projects by a specific language, use 'FilterProjectsByLanguage'. " +
+        "4. Be concise and wait for instructions before acting.")
 };
 
 Console.WriteLine("Flux: [Connected]");

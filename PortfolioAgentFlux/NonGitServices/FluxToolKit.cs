@@ -1,8 +1,7 @@
 using Microsoft.Extensions.AI;
 using PortfolioAgentFlux.GithubServicesandFiles;
-using PortfolioAgentFlux.NonGitServices;
 
-namespace PortfolioAgentFlux.Services;
+namespace PortfolioAgentFlux.NonGitServices;
 
 public class FluxToolKit
 {
@@ -53,7 +52,11 @@ public class FluxToolKit
 
             // 6. Local File Reader (Encapsulated logic for safety)
             AIFunctionFactory.Create(ReadLocalFile, "ReadProjectFile", 
-                "Reads local source code. Use this for files within THIS current project.")
+                "Reads local source code. Use this for files within THIS current project."),
+            // 7. Language Filter
+            AIFunctionFactory.Create(async (string language) => 
+                    await FilterReposByLanguage(language), 
+                "FilterProjectsByLanguage", "Returns a list of repositories that primarily use a specific language (e.g., 'C#', 'TypeScript').")
         };
     }
 
@@ -81,6 +84,31 @@ public class FluxToolKit
         catch (Exception ex) 
         {
             return $"❌ Error accessing file: {ex.Message}";
+        }
+    }
+    private async Task<string> FilterReposByLanguage(string language)
+    {
+        try
+        {
+            // Use the new raw method we just made
+            var allRepos = await _githubService.GetRawRepoList();
+        
+            var filtered = allRepos.Where(r => 
+                string.Equals(r.Language, language, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            if (!filtered.Any())
+                return $"🔍 No projects found where the primary language is '{language}'.";
+
+            var result = $"📂 Found {filtered.Count} projects using {language}:\n";
+            foreach (var repo in filtered)
+            {
+                result += $"- {repo.Name} (Stars: {repo.StargazersCount})\n";
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            return $"❌ Error filtering projects: {ex.Message}";
         }
     }
 }

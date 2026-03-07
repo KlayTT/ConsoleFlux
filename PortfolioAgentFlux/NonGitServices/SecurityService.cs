@@ -1,4 +1,4 @@
-namespace PortfolioAgentFlux.GithubServicesandFiles;
+namespace PortfolioAgentFlux.NonGitServices;
 
 public class SecurityService
 {
