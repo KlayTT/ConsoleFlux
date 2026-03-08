@@ -26,7 +26,7 @@ _____
 - [x] Safety Audit: Move sensitive credentials (Tokens) to Environment Variables.
 - [x] Advanced Filtering: Implement language-specific and metadata-based repository analytics.
 - [ ] Visual Identity: Develop Wireframes and Figma designs for the web-based portfolio frontend.
-
+_____
 ## System Architecture
 
 - PortfolioAgentFlux follows a Service-Oriented Architecture designed for high modularity and clean separation of concerns:
