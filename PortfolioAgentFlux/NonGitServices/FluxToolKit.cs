@@ -56,7 +56,11 @@ public class FluxToolKit
             // 7. Language Filter
             AIFunctionFactory.Create(async (string language) => 
                     await FilterReposByLanguage(language), 
-                "FilterProjectsByLanguage", "Returns a list of repositories that primarily use a specific language (e.g., 'C#', 'TypeScript').")
+                "FilterProjectsByLanguage", "Returns a list of repositories that primarily use a specific language (e.g., 'C#', 'TypeScript')."),
+            // 8. Recent Projects Fetcher
+            AIFunctionFactory.Create(async (int limit) => 
+                    await GetRecentlyPushedProjects(limit), 
+                "GetRecentProjects", "Returns the most recently updated repositories (e.g., 'What has Klay been working on lately?').")
         };
     }
 
@@ -90,25 +94,57 @@ public class FluxToolKit
     {
         try
         {
-            // Use the new raw method we just made
             var allRepos = await _githubService.GetRawRepoList();
-        
-            var filtered = allRepos.Where(r => 
-                string.Equals(r.Language, language, StringComparison.OrdinalIgnoreCase)).ToList();
+    
+            var filtered = allRepos
+                .Where(r => string.Equals(r.Language, language, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(r => r.PushedAt) // Keep the most recent at the top
+                .ToList();
 
             if (!filtered.Any())
                 return $"🔍 No projects found where the primary language is '{language}'.";
 
-            var result = $"📂 Found {filtered.Count} projects using {language}:\n";
+            var result = $"📂 Found {filtered.Count} projects using {language} (Sorted by Recent):\n";
             foreach (var repo in filtered)
             {
-                result += $"- {repo.Name} (Stars: {repo.StargazersCount})\n";
+                string dateStr = repo.PushedAt?.ToString("MMM dd, yyyy") ?? "Unknown";
+                result += $"- {repo.Name} (Stars: {repo.StargazersCount} | Last Pushed: {dateStr})\n";
             }
             return result;
         }
         catch (Exception ex)
         {
             return $"❌ Error filtering projects: {ex.Message}";
+        }
+    }
+    private async Task<string> GetRecentlyPushedProjects(int limit = 3)
+    {
+        try
+        {
+            var allRepos = await _githubService.GetRawRepoList();
+        
+            // Sort by PushedAt descending (most recent first)
+            var recent = allRepos
+                .Where(r => r.PushedAt.HasValue)
+                .OrderByDescending(r => r.PushedAt)
+                .Take(limit)
+                .ToList();
+
+            if (!recent.Any())
+                return "🔍 I couldn't find any recently updated projects.";
+
+            var result = $"🕒 Klay's {recent.Count} Most Recent Projects:\n";
+            foreach (var repo in recent)
+            {
+                // Format the date nicely
+                string dateStr = repo.PushedAt?.ToString("MMM dd, yyyy") ?? "Unknown";
+                result += $"- {repo.Name} (Last Pushed: {dateStr})\n";
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            return $"❌ Error fetching recent projects: {ex.Message}";
         }
     }
 }

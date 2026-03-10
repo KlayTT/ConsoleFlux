@@ -32,7 +32,8 @@ var chatHistory = new List<ChatMessage>
         "1. Do NOT call tools for casual conversation or greetings. " +
         "2. ONLY call a tool if Klay specifically asks for information you don't have (e.g., listing repos, checking code, or filtering by language). " +
         "3. If Klay asks for projects by a specific language, use 'FilterProjectsByLanguage'. " +
-        "4. Be concise and wait for instructions before acting.")
+        "4. Be concise and wait for instructions before acting." +
+        "5. If Klay asks what you've been working on or wants recent projects, use 'GetRecentProjects'.")
 };
 
 Console.WriteLine("Flux: [Connected]");
@@ -46,34 +47,33 @@ while (true)
     chatHistory.Add(new ChatMessage(ChatRole.User, userInput));
     Console.Write("Flux: ");
 
+    // 1. Declare the variable OUTSIDE the try block
+    string responseText = string.Empty;
+
     try 
     {
-        // GetResponseAsync with FunctionInvocation handles the tool history for us.
         var response = await brain.GetResponseAsync(chatHistory, chatOptions);
         
-        // Use the built-in Text property if available, otherwise ToString()
-        string responseText = response.ToString();
+        // 2. Assign the value
+        responseText = response.ToString() ?? "";
 
-        // CLEANUP: If it's a JSON string or blank, we need to extract the actual words.
         if (string.IsNullOrWhiteSpace(responseText) || responseText == "{}" || responseText.Contains("\"CallId\""))
         {
-            // Look for the last message Flux actually wrote to the history during his "thought process"
             var lastAssistantMsg = chatHistory.LastOrDefault(m => m.Role == ChatRole.Assistant && !string.IsNullOrEmpty(m.Text));
             responseText = lastAssistantMsg?.Text ?? "Done! What's next?";
         }
 
-        // Only print if we have something new.
         Console.WriteLine(responseText);
-
-        // CRITICAL SYNC: Only add to history if the brain didn't already add it.
-        // This prevents the "Double Vision" that makes him think there's a path error.
-        if (chatHistory.LastOrDefault()?.Text != responseText)
-        {
-            chatHistory.Add(new ChatMessage(ChatRole.Assistant, responseText));
-        }
     }
     catch (Exception ex)
     {
         Console.WriteLine($"\n❌ Flux Error: {ex.Message}");
+        continue; // Skip the history sync if it crashed
+    }
+
+    // 3. Now this block can see responseText perfectly!
+    if (!string.IsNullOrEmpty(responseText) && chatHistory.LastOrDefault()?.Text != responseText)
+    {
+        chatHistory.Add(new ChatMessage(ChatRole.Assistant, responseText));
     }
 }
