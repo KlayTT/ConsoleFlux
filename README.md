@@ -19,7 +19,7 @@ _____
 
 ## RoadMap
 
-&#9745; Integrate local Llama 3.2 model.
+&#9745; Integrate local Llama 3.2 model.  
 &#9745; Implement GitHub tool calling (Repositories, READMEs, Commits).  
 &#9745; Integrate Roslyn for deep code analysis and security scanning.  
 &#9745; Refactor into Clean Architecture (Migration to FluxToolKit and Service layers).  
