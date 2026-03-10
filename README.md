@@ -19,13 +19,13 @@ _____
 
 ## RoadMap
 
-* [x] Integrate local Llama 3.2 model.
-* [x] Implement GitHub tool calling (Repositories, READMEs, Commits).
-* [x] Integrate Roslyn for deep code analysis and security scanning.
-* [x] Refactor into Clean Architecture (Migration to FluxToolKit and Service layers).
-* [x] Safety Audit: Move sensitive credentials (Tokens) to Environment Variables.
-* [x] Advanced Filtering: Implement language-specific and metadata-based repository analytics.
-* [ ] Visual Identity: Develop Wireframes and Figma designs for the web-based portfolio frontend.
+&#9745; Integrate local Llama 3.2 model.
+&#9745; Implement GitHub tool calling (Repositories, READMEs, Commits).  
+&#9745; Integrate Roslyn for deep code analysis and security scanning.  
+&#9745; Refactor into Clean Architecture (Migration to FluxToolKit and Service layers).  
+&#9745; Safety Audit: Move sensitive credentials (Tokens) to Environment Variables.  
+&#9745; Advanced Filtering: Implement language-specific and metadata-based repository analytics.  
+&#9744; Visual Identity: Develop Wireframes and Figma designs for the web-based portfolio frontend.  
 
 ## System Architecture
 
