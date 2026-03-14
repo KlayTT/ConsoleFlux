@@ -33,7 +33,9 @@ var chatHistory = new List<ChatMessage>
         "2. ONLY call a tool if Klay specifically asks for information you don't have (e.g., listing repos, checking code, or filtering by language). " +
         "3. If Klay asks for projects by a specific language, use 'FilterProjectsByLanguage'. " +
         "4. Be concise and wait for instructions before acting." +
-        "5. If Klay asks what you've been working on or wants recent projects, use 'GetRecentProjects'.")
+        "5. If Klay asks what you've been working on or wants recent projects, use 'GetRecentProjects'." +
+        "6. If the user provides positive feedback (like 'Nice work' or 'Thanks'), do not re-run tools or repeat previous data. " +
+        "Simply acknowledge the praise briefly and wait for the next instruction.")
 };
 
 Console.WriteLine("Flux: [Connected]");
@@ -47,15 +49,15 @@ while (true)
     chatHistory.Add(new ChatMessage(ChatRole.User, userInput));
     Console.Write("Flux: ");
 
-    // 1. Declare the variable OUTSIDE the try block
-    string responseText = string.Empty;
+    // 1. Declare without an initial value
+    string responseText;
 
     try 
     {
         var response = await brain.GetResponseAsync(chatHistory, chatOptions);
-        
-        // 2. Assign the value
-        responseText = response.ToString() ?? "";
+    
+        // 2. The compiler knows response.ToString() isn't null here
+        responseText = response.ToString();
 
         if (string.IsNullOrWhiteSpace(responseText) || responseText == "{}" || responseText.Contains("\"CallId\""))
         {
@@ -68,12 +70,18 @@ while (true)
     catch (Exception ex)
     {
         Console.WriteLine($"\n❌ Flux Error: {ex.Message}");
-        continue; // Skip the history sync if it crashed
+        continue; 
     }
 
-    // 3. Now this block can see responseText perfectly!
-    if (!string.IsNullOrEmpty(responseText) && chatHistory.LastOrDefault()?.Text != responseText)
+    // 3. Optimized History Sync so Flux does not get stuck, old loop only worked with about 7 tools before flux would get stuck
+    if (!string.IsNullOrEmpty(responseText))
     {
-        chatHistory.Add(new ChatMessage(ChatRole.Assistant, responseText));
+        var lastMsg = chatHistory.LastOrDefault();
+        
+        // Only add if the text is truly new and doesn't just repeat the last assistant response
+        if (lastMsg?.Text != responseText)
+        {
+            chatHistory.Add(new ChatMessage(ChatRole.Assistant, responseText));
+        }
     }
 }

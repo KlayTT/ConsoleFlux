@@ -53,14 +53,20 @@ public class FluxToolKit
             // 6. Local File Reader (Encapsulated logic for safety)
             AIFunctionFactory.Create(ReadLocalFile, "ReadProjectFile", 
                 "Reads local source code. Use this for files within THIS current project."),
-            // 7. Language Filter
+            // 7. Language Filter, Updated string for Flux to know the difference between this tool and the "SearchProjectsByKeyword" tool.
             AIFunctionFactory.Create(async (string language) => 
                     await FilterReposByLanguage(language), 
-                "FilterProjectsByLanguage", "Returns a list of repositories that primarily use a specific language (e.g., 'C#', 'TypeScript')."),
+                "FilterProjectsByLanguage", "Finds repos by primary PROGRAMMING LANGUAGE (e.g. 'C#', 'Java'). " +
+                                            "Use this ONLY for language-specific requests."),
             // 8. Recent Projects Fetcher
             AIFunctionFactory.Create(async (int limit) => 
                     await GetRecentlyPushedProjects(limit), 
-                "GetRecentProjects", "Returns the most recently updated repositories (e.g., 'What has Klay been working on lately?').")
+                "GetRecentProjects", "Returns the most recently updated repositories (e.g., 'What has Klay been working on lately?')."),
+            // 9. Keyword Search Tool, Updated string for Flux to know the difference between this tool and the "FilterReposByLanguage" tool.
+            AIFunctionFactory.Create(async (string keyword) => 
+                    await SearchProjectsByKeyword(keyword), 
+                "SearchProjectsByKeyword", "Finds repos by TOPIC or CONTENT (e.g. 'Pizza', 'Assessment', 'API'). " +
+                                           "Use this for general searches or when looking for keywords in descriptions.")
         };
     }
 
@@ -145,6 +151,38 @@ public class FluxToolKit
         catch (Exception ex)
         {
             return $"❌ Error fetching recent projects: {ex.Message}";
+        }
+    }
+    private async Task<string> SearchProjectsByKeyword(string keyword)
+    {
+        try
+        {
+            var allRepos = await _githubService.GetRawRepoList();
+        
+            var matches = allRepos.Where(r => 
+                    (r.Name != null && r.Name.Contains(keyword, StringComparison.OrdinalIgnoreCase)) || 
+                    (r.Description != null && r.Description.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(r => r.PushedAt)
+                .ToList();
+
+            if (!matches.Any())
+                return $"🔍 I couldn't find any projects matching the keyword '{keyword}'.";
+
+            var result = $"🔎 Found {matches.Count} projects matching '{keyword}':\n";
+            foreach (var repo in matches)
+            {
+                string dateStr = repo.PushedAt?.ToString("MMM dd, yyyy") ?? "Unknown";
+                result += $"- {repo.Name} (Last Pushed: {dateStr})\n";
+                if (!string.IsNullOrEmpty(repo.Description))
+                {
+                    result += $"   ↳ {repo.Description}\n";
+                }
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            return $"❌ Error searching projects: {ex.Message}";
         }
     }
 }
