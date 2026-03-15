@@ -10,9 +10,9 @@ _____
 - Code Auditing: Real-time scanning for security risks and unit test suggestions using Roslyn-based analysis.
 
 ## Latest Capabilities Added
-- Keyword Search:** Flux can now search through repository names and descriptions to find specific topics or project themes (e.g., searching for "Pizza" or "API").
-- Activity-Based Sorting:** All repository results are now automatically sorted by the most recent "Last Pushed" date, ensuring the latest work is always on top.
-- Indented Metadata:** Added ↳ nested formatting for project descriptions to provide a cleaner, more readable CLI output.
+- Keyword Search: Flux can now search through repository names and descriptions to find specific topics or project themes (e.g., searching for "Pizza" or "API").
+- Activity-Based Sorting: All repository results are now automatically sorted by the most recent "Last Pushed" date, ensuring the latest work is always on top.
+- Indented Metadata: Added ↳ nested formatting for project descriptions to provide a cleaner, more readable CLI output.
 
 ## Resources & Tech Stack
 
