@@ -35,7 +35,12 @@ var chatHistory = new List<ChatMessage>
         "4. Be concise and wait for instructions before acting." +
         "5. If Klay asks what you've been working on or wants recent projects, use 'GetRecentProjects'." +
         "6. If the user provides positive feedback (like 'Nice work' or 'Thanks'), do not re-run tools or repeat previous data. " +
-        "Simply acknowledge the praise briefly and wait for the next instruction.")
+        "7. Simply acknowledge the praise briefly and wait for the next instruction." +
+        "8. You are a helpful AI portfolio assistant named Flux. - IMPORTANT: Only call a tool if the user explicitly asks for data (e.g., 'Find...', 'List...', 'Search...')"+
+        "9. SOCIAL CUES: If the user says 'Nice work,' 'Thanks,' 'Hello,' or is just chatting, DO NOT call any tools. Simply respond as a friendly colleague."+
+        "10. DATA INTEGRITY: Do not repeat tool results in back-to-back messages unless asked a new follow-up question."+
+        "11. NEVER generate a JSON function call if you are just acknowledging a statement, saying goodbye, or responding to social chat. If no tool is needed,"+
+                    "respond ONLY with plain text. Do not attempt to use tools with empty parameters to simulate conversation.")
 };
 
 Console.WriteLine("Flux: [Connected]");
@@ -59,10 +64,12 @@ while (true)
         // 2. The compiler knows response.ToString() isn't null here
         responseText = response.ToString();
 
-        if (string.IsNullOrWhiteSpace(responseText) || responseText == "{}" || responseText.Contains("\"CallId\""))
+        if (responseText.Trim().StartsWith("{") && responseText.Contains("\"name\""))
         {
+            // Flux tried to show us his internal thoughts! 
+            // Let's grab the last actual text he said instead.
             var lastAssistantMsg = chatHistory.LastOrDefault(m => m.Role == ChatRole.Assistant && !string.IsNullOrEmpty(m.Text));
-            responseText = lastAssistantMsg?.Text ?? "Done! What's next?";
+            responseText = lastAssistantMsg?.Text ?? "I'm ready for your next instruction, Klay!";
         }
 
         Console.WriteLine(responseText);

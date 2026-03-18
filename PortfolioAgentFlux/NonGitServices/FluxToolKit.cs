@@ -27,7 +27,8 @@ public class FluxToolKit
         {
             // 1. GitHub Repository List
             AIFunctionFactory.Create(async () => 
-                await _githubService.GetMyProjects(), "GetRepositories", "Lists all repositories."),
+                await _githubService.GetMyProjects(), "GetRepositories", "The DEFAULT tool for general requests. Use this to show the most recent projects " +
+                                                                                                "or when the user just asks 'What have you been working on?'"),
 
             // 2. GitHub README Fetcher
             AIFunctionFactory.Create(async (string repoName) => 
@@ -53,11 +54,12 @@ public class FluxToolKit
             // 6. Local File Reader (Encapsulated logic for safety)
             AIFunctionFactory.Create(ReadLocalFile, "ReadProjectFile", 
                 "Reads local source code. Use this for files within THIS current project."),
+            
             // 7. Language Filter, Updated string for Flux to know the difference between this tool and the "SearchProjectsByKeyword" tool.
             AIFunctionFactory.Create(async (string language) => 
                     await FilterReposByLanguage(language), 
-                "FilterProjectsByLanguage", "Finds repos by primary PROGRAMMING LANGUAGE (e.g. 'C#', 'Java'). " +
-                                            "Use this ONLY for language-specific requests."),
+                "FilterProjectsByLanguage", "Use ONLY if the user explicitly names a programming language (e.g., 'Show me C# projects'). " +
+                                            "Do NOT use for general 'show me projects' requests."),
             // 8. Recent Projects Fetcher
             AIFunctionFactory.Create(async (int limit) => 
                     await GetRecentlyPushedProjects(limit), 
