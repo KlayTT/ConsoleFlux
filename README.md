@@ -29,7 +29,8 @@ _____
 &#9745; Integrate Roslyn for deep code analysis and security scanning.  
 &#9745; Refactor into Clean Architecture (Migration to FluxToolKit and Service layers).  
 &#9745; Safety Audit: Move sensitive credentials (Tokens) to Environment Variables.  
-&#9745; Advanced Filtering: Implement language-specific and metadata-based repository analytics.  
+&#9745; Advanced Filtering: Implement language-specific and metadata-based repository analytics.
+&#9745; Logic: Flux now has the abilitly to only call tools when requested and can hold a casual conversation. 
 &#9744; Visual Identity: Develop Wireframes and Figma designs for the web-based portfolio frontend.  
 
 ## System Architecture
